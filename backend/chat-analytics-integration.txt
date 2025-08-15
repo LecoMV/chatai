@@ -1,0 +1,44 @@
+
+// Add this to your chat endpoint to track analytics
+const conversationId = req.body.conversationId || uuidv4();
+const userId = req.body.userId || req.session?.userId || uuidv4();
+const messageId = uuidv4();
+
+// Track conversation start if new
+if (!req.body.conversationId) {
+    analyticsService.queueEvent('conversation_start', {
+        clientId,
+        userId,
+        conversationId,
+        userAgent: req.headers['user-agent'],
+        ip: req.ip,
+        pageUrl: req.headers.referer,
+        referrer: req.headers.referer
+    });
+}
+
+// Track user message
+analyticsService.queueEvent('message', {
+    messageId: uuidv4(),
+    conversationId,
+    clientId,
+    userId,
+    role: 'user',
+    content: message,
+    responseTimeMs: 0,
+    tokensUsed: 0,
+    modelUsed: null
+});
+
+// After getting OpenAI response, track bot message:
+analyticsService.queueEvent('message', {
+    messageId: uuidv4(),
+    conversationId,
+    clientId,
+    userId,
+    role: 'bot',
+    content: responseMessage,
+    responseTimeMs: Date.now() - startTime,
+    tokensUsed: completion.usage?.total_tokens || 0,
+    modelUsed: settings.model || 'gpt-3.5-turbo'
+});

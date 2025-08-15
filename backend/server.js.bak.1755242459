@@ -1,22 +1,20 @@
+tee /opt/chatai/backend/server.js >/dev/null <<'JS'
 const express = require('express');
 const cors = require('cors');
 const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const winston = require('winston');
-const fs = require('fs');
+const OpenAI = require('openai');
+require('dotenv').config({ path: '/opt/chatai/.env' }); // explicit; systemd also supplies env
 
-// Load env
-require('dotenv').config({ path: '/opt/chatai/.env' });
+const { analyticsMiddleware } = require('./src/analytics');
+const { registerAdminAnalytics } = require('./src/admin-analytics');
 
-// Try to load analytics helpers (fallback to no-ops if missing so we don't crash)
-let analyticsMiddleware = (_req, _res, next) => next();
-let registerAdminAnalytics = (_app) => {};
-try { ({ analyticsMiddleware } = require('./src/analytics')); } catch {}
-try { ({ registerAdminAnalytics } = require('./src/admin-analytics')); } catch {}
+const app = express();
+const port = process.env.PORT || 3000;
 
-// Logger
-if (!fs.existsSync('logs')) fs.mkdirSync('logs');
+// ---- logging ----
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -32,13 +30,16 @@ const logger = winston.createLogger({
   ],
 });
 
-const app = express();
-const port = process.env.PORT || 3000;
+// ensure logs dir exists
+const fs = require('fs');
+if (!fs.existsSync('logs')) fs.mkdirSync('logs');
 
-// Security & basics
+// ---- OpenAI ----
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+
+// ---- middleware ----
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
 
 // CORS
 const corsOptions = {
@@ -52,8 +53,9 @@ const corsOptions = {
   optionsSuccessStatus: 200
 };
 app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
 
-// Rate limit (skip health)
+// rate limit (skip health)
 const limiter = rateLimit({
   windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60_000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 50,
@@ -64,13 +66,18 @@ const limiter = rateLimit({
 });
 app.use('/api/', limiter);
 
-// Request logging
+// request logging
 app.use((req, _res, next) => {
-  logger.info({ method: req.method, url: req.url, ip: req.ip, userAgent: req.get('User-Agent') });
+  logger.info({
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
   next();
 });
 
-// Health
+// health
 app.get('/health', (_req, res) => {
   res.json({
     status: 'OK',
@@ -82,17 +89,15 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Mount analytics BEFORE the chat handler
+// >>> mount analytics middleware BEFORE the chat handler <<<
 app.use('/api/chat', analyticsMiddleware());
 
-// ---- Chat endpoint (OpenAI Chat Completions) ----
-const OpenAI = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
+// /api/chat handler (based on your server-v1.js)
 app.post('/api/chat', async (req, res) => {
   const startTime = Date.now();
 
   try {
+    // make conversationHistory optional but validate type
     const { message, conversationHistory = [], settings } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
@@ -113,14 +118,11 @@ app.post('/api/chat', async (req, res) => {
       content: `You are a helpful AI assistant for CoastalWeb's ChatAI service. Be friendly, professional, and concise.`
     };
 
-    const messages = [systemMessage, ...conversationHistory];
-    if (!conversationHistory.some(m => m?.role === 'user' && m?.content === message)) {
-      messages.push({ role: 'user', content: message });
-    }
-
+    // NOTE: assuming conversationHistory already includes the latest user message.
+    // If not, you can push { role: 'user', content: message } here.
     const completion = await openai.chat.completions.create({
       model: safeSettings.model,
-      messages,
+      messages: [systemMessage, ...conversationHistory],
       temperature: safeSettings.temperature,
       max_tokens: safeSettings.maxTokens
     });
@@ -145,19 +147,22 @@ app.post('/api/chat', async (req, res) => {
 
   } catch (error) {
     logger.error({ error: error.message, code: error.code });
+
     if (error.code === 'rate_limit_exceeded') {
       return res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
     } else if (error.code === 'insufficient_quota') {
       return res.status(403).json({ error: 'API quota exceeded.' });
+    } else {
+      return res.status(500).json({ error: 'Internal server error.' });
     }
-    return res.status(500).json({ error: 'Internal server error.' });
   }
 });
 
-// Admin analytics endpoints
+// Admin analytics endpoints (keep outside any route)
 registerAdminAnalytics(app);
 
-// Start server
+// start server
 app.listen(port, '127.0.0.1', () => {
   logger.info(`ChatAI server running on port ${port}`);
 });
+JS

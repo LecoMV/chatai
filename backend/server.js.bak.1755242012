@@ -1,0 +1,9 @@
+const { registerAdminAnalytics } = require('./src/admin-analytics');
+const { analyticsMiddleware } = require('./src/analytics');
+app.use('/api/chat', analyticsMiddleware());
+app.post('/api/chat', async (req, res) => {                                                               const startTime = Date.now();
+// Analytics routes (must be before 404 handler)
+
+// Auto-added: admin analytics endpoints
+registerAdminAnalytics(app);
+
