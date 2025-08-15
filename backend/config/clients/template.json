@@ -1,0 +1,44 @@
+{
+  "clientId": "demo-client",
+  "businessName": "Demo Business",
+  "website": "https://demo.example.com",
+  "industry": "Technology",
+  "knowledgeBase": {
+    "about": "We are a demo company providing excellent services.",
+    "services": [
+      "Web Development",
+      "Consulting",
+      "Support"
+    ],
+    "faqs": [
+      {
+        "question": "What are your business hours?",
+        "answer": "We're available Monday-Friday, 9 AM - 5 PM EST"
+      },
+      {
+        "question": "How can I contact support?",
+        "answer": "Email us at support@demo.com or call 1-800-DEMO"
+      }
+    ],
+    "policies": {
+      "returns": "30-day return policy on all services",
+      "privacy": "We respect your privacy and never share your data"
+    }
+  },
+  "chatbotSettings": {
+    "tone": "professional and friendly",
+    "maxResponseLength": 500,
+    "escalationEmail": "support@demo.com",
+    "limitations": [
+      "Cannot process payments",
+      "Cannot access customer accounts",
+      "Cannot provide legal advice"
+    ]
+  },
+  "customization": {
+    "primaryColor": "#0066cc",
+    "greeting": "Hello! How can I help you today?",
+    "placeholder": "Type your question here...",
+    "position": "bottom-right"
+  }
+}
