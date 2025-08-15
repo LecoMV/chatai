@@ -4,19 +4,13 @@ const helmet = require('helmet');
 const compression = require('compression');
 const rateLimit = require('express-rate-limit');
 const winston = require('winston');
-const fs = require('fs');
+const OpenAI = require('openai');
+require('dotenv').config();
 
-// Load env
-require('dotenv').config({ path: '/opt/chatai/.env' });
+const app = express();
+const port = process.env.PORT || 3001;
 
-// Try to load analytics helpers (fallback to no-ops if missing so we don't crash)
-let analyticsMiddleware = (_req, _res, next) => next();
-let registerAdminAnalytics = (_app) => {};
-try { ({ analyticsMiddleware } = require('./src/analytics')); } catch {}
-try { ({ registerAdminAnalytics } = require('./src/admin-analytics')); } catch {}
-
-// Logger
-if (!fs.existsSync('logs')) fs.mkdirSync('logs');
+// Logging setup
 const logger = winston.createLogger({
   level: 'info',
   format: winston.format.combine(
@@ -32,15 +26,22 @@ const logger = winston.createLogger({
   ],
 });
 
-const app = express();
-const port = process.env.PORT || 3000;
+// Create logs directory if it doesn't exist
+const fs = require('fs');
+if (!fs.existsSync('logs')) {
+  fs.mkdirSync('logs');
+}
 
-// Security & basics
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// Security middleware
 app.use(helmet({ contentSecurityPolicy: false }));
 app.use(compression());
-app.use(express.json({ limit: '10mb' }));
 
-// CORS
+// CORS configuration
 const corsOptions = {
   origin: process.env.CORS_ORIGINS ? process.env.CORS_ORIGINS.split(',') : [
     'https://chatai.coastalweb.us',
@@ -51,29 +52,37 @@ const corsOptions = {
   credentials: true,
   optionsSuccessStatus: 200
 };
-app.use(cors(corsOptions));
 
-// Rate limit (skip health)
+app.use(cors(corsOptions));
+app.use(express.json({ limit: '10mb' }));
+
+// Rate limiting
 const limiter = rateLimit({
-  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60_000,
+  windowMs: parseInt(process.env.RATE_LIMIT_WINDOW) || 60000,
   max: parseInt(process.env.RATE_LIMIT_MAX_REQUESTS) || 50,
   message: { error: 'Too many requests from this IP, please try again later.' },
   standardHeaders: true,
   legacyHeaders: false,
   skip: (req) => req.path === '/health'
 });
+
 app.use('/api/', limiter);
 
 // Request logging
-app.use((req, _res, next) => {
-  logger.info({ method: req.method, url: req.url, ip: req.ip, userAgent: req.get('User-Agent') });
+app.use((req, res, next) => {
+  logger.info({
+    method: req.method,
+    url: req.url,
+    ip: req.ip,
+    userAgent: req.get('User-Agent')
+  });
   next();
 });
 
-// Health
-app.get('/health', (_req, res) => {
-  res.json({
-    status: 'OK',
+// Health check endpoint
+app.get('/health', (req, res) => {
+  res.json({ 
+    status: 'OK', 
     service: 'ChatAI CoastalWeb',
     version: '1.0.0',
     timestamp: new Date().toISOString(),
@@ -82,30 +91,25 @@ app.get('/health', (_req, res) => {
   });
 });
 
-// Mount analytics BEFORE the chat handler
-app.use('/api/chat', analyticsMiddleware());
-
-// ---- Chat endpoint (OpenAI Chat Completions) ----
-const OpenAI = require('openai');
-const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-
+// Chat endpoint
 app.post('/api/chat', async (req, res) => {
   const startTime = Date.now();
-
+  
   try {
-    const { message, conversationHistory = [], settings } = req.body;
+    const { message, conversationHistory, settings } = req.body;
 
     if (!message || typeof message !== 'string' || message.trim().length === 0) {
       return res.status(400).json({ error: 'Message is required' });
     }
+
     if (!Array.isArray(conversationHistory)) {
       return res.status(400).json({ error: 'Conversation history must be an array' });
     }
 
     const safeSettings = {
       model: settings?.model || 'gpt-3.5-turbo',
-      temperature: Math.min(Math.max(settings?.temperature ?? 0.7, 0), 2),
-      maxTokens: Math.min(settings?.maxTokens ?? 500, 1000)
+      temperature: Math.min(Math.max(settings?.temperature || 0.7, 0), 2),
+      maxTokens: Math.min(settings?.maxTokens || 500, 1000)
     };
 
     const systemMessage = {
@@ -113,49 +117,35 @@ app.post('/api/chat', async (req, res) => {
       content: `You are a helpful AI assistant for CoastalWeb's ChatAI service. Be friendly, professional, and concise.`
     };
 
-    const messages = [systemMessage, ...conversationHistory];
-    if (!conversationHistory.some(m => m?.role === 'user' && m?.content === message)) {
-      messages.push({ role: 'user', content: message });
-    }
-
     const completion = await openai.chat.completions.create({
       model: safeSettings.model,
-      messages,
+      messages: [systemMessage, ...conversationHistory],
       temperature: safeSettings.temperature,
       max_tokens: safeSettings.maxTokens
     });
 
-    // --- analytics: record token usage for this request ---
-    const u = completion?.usage || {};
-    res.locals.openai_usage = {
-      model: completion?.model || safeSettings.model,
-      prompt_tokens: (u.prompt_tokens ?? u.input_tokens ?? 0),
-      completion_tokens: (u.completion_tokens ?? u.output_tokens ?? 0),
-    };
-
     const responseTime = Date.now() - startTime;
 
-    res.json({
-      message: completion.choices?.[0]?.message?.content ?? '',
+    res.json({ 
+      message: completion.choices[0].message.content,
       usage: completion.usage,
       model: safeSettings.model,
-      responseTime,
+      responseTime: responseTime,
       service: 'ChatAI CoastalWeb'
     });
 
   } catch (error) {
     logger.error({ error: error.message, code: error.code });
+    
     if (error.code === 'rate_limit_exceeded') {
-      return res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
+      res.status(429).json({ error: 'Rate limit exceeded. Please try again.' });
     } else if (error.code === 'insufficient_quota') {
-      return res.status(403).json({ error: 'API quota exceeded.' });
+      res.status(403).json({ error: 'API quota exceeded.' });
+    } else {
+      res.status(500).json({ error: 'Internal server error.' });
     }
-    return res.status(500).json({ error: 'Internal server error.' });
   }
 });
-
-// Admin analytics endpoints
-registerAdminAnalytics(app);
 
 // Start server
 app.listen(port, '127.0.0.1', () => {

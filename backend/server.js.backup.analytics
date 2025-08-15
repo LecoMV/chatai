@@ -1,0 +1,288 @@
+const express = require('express');
+const cors = require('cors');
+const dotenv = require('dotenv');
+const path = require('path');
+const winston = require('winston');
+const OpenAI = require('openai');
+const chatService = require('./services/chatService');
+const adminRoutes = require('./adminRoutes');
+
+// Load environment variables
+dotenv.config();
+
+// Initialize Express app
+const app = express();
+const PORT = process.env.PORT || 3000;
+
+// Initialize OpenAI
+const openai = new OpenAI({
+  apiKey: process.env.OPENAI_API_KEY
+});
+
+// Configure Winston logger
+const logger = winston.createLogger({
+  level: 'info',
+  format: winston.format.combine(
+    winston.format.timestamp(),
+    winston.format.json()
+  ),
+  transports: [
+    new winston.transports.Console({
+      format: winston.format.simple()
+    }),
+    new winston.transports.File({ 
+      filename: 'error.log', 
+      level: 'error' 
+    }),
+    new winston.transports.File({ 
+      filename: 'combined.log' 
+    })
+  ]
+});
+
+// Middleware
+app.use(cors({
+  origin: '*', // Allow all origins - you may want to restrict this in production
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
+app.use(express.json());
+app.use(express.urlencoded({ extended: true }));
+
+// Request logging middleware
+app.use((req, res, next) => {
+  logger.info(`${req.method} ${req.path} - ${req.ip}`);
+  next();
+});
+
+// Serve static files from frontend directory
+app.use(express.static(path.join(__dirname, '../frontend')));
+
+// Health check endpoint
+app.get('/api/health', (req, res) => {
+  res.json({ 
+    status: 'healthy',
+    timestamp: new Date().toISOString(),
+    service: 'chatai-coastalweb'
+  });
+});
+
+// Main chat endpoint with client customization
+app.post('/api/chat', async (req, res) => {
+  try {
+    const { 
+      message, 
+      conversationHistory = [], 
+      clientId = 'demo-client',
+      settings = {} 
+    } = req.body;
+    
+    // Log the request
+    logger.info(`Chat request for client: ${clientId}`);
+    console.log('Received chat request for client:', clientId);
+    
+    // Validate input
+    if (!message || typeof message !== 'string') {
+      return res.status(400).json({ 
+        error: 'Message is required and must be a string' 
+      });
+    }
+    
+    // Load client-specific configuration
+    const clientConfig = await chatService.loadClientConfig(clientId);
+    
+    if (!clientConfig) {
+      logger.error(`No config found for client: ${clientId}`);
+      return res.status(400).json({ 
+        error: 'Configuration not found for this website' 
+      });
+    }
+    
+    logger.info(`Loaded config for: ${clientConfig.businessName}`);
+    console.log('Loaded config for:', clientConfig.businessName);
+    
+    // Generate customized system prompt
+    const systemPrompt = chatService.generateSystemPrompt(clientConfig);
+    
+    // Prepare messages for OpenAI
+    const messages = [
+      { role: 'system', content: systemPrompt },
+      ...conversationHistory.slice(-10), // Keep last 10 messages for context
+      { role: 'user', content: message }
+    ];
+    
+    // Call OpenAI with client-specific context
+    const completion = await openai.chat.completions.create({
+      model: settings.model || 'gpt-3.5-turbo',
+      messages: messages,
+      temperature: settings.temperature || 0.7,
+      max_tokens: settings.maxTokens || 500,
+      top_p: 1,
+      frequency_penalty: 0,
+      presence_penalty: 0
+    });
+    
+    const responseMessage = completion.choices[0].message.content;
+    
+    // Log successful response
+    logger.info(`Chat response sent for client: ${clientId}`);
+    
+    res.json({ 
+      message: responseMessage,
+      clientName: clientConfig.businessName,
+      success: true
+    });
+    
+  } catch (error) {
+    logger.error('Chat error:', error);
+    console.error('Chat error:', error);
+    
+    // Handle specific OpenAI errors
+    if (error.code === 'insufficient_quota') {
+      return res.status(402).json({ 
+        error: 'API quota exceeded. Please check your OpenAI account.' 
+      });
+    }
+    
+    if (error.code === 'invalid_api_key') {
+      return res.status(401).json({ 
+        error: 'Invalid API key configuration.' 
+      });
+    }
+    
+    // Generic error response
+    res.status(500).json({ 
+      error: 'Sorry, I had trouble processing that. Please try again.',
+      success: false
+    });
+  }
+});
+
+// Get all available clients (for admin purposes)
+app.get('/api/clients', async (req, res) => {
+  try {
+    const clients = await chatService.getAllClients();
+    res.json({ clients, success: true });
+  } catch (error) {
+    logger.error('Error fetching clients:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch clients',
+      success: false 
+    });
+  }
+});
+
+// Get specific client configuration (for admin/testing)
+app.get('/api/clients/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const config = await chatService.loadClientConfig(clientId);
+    
+    if (!config) {
+      return res.status(404).json({ 
+        error: 'Client not found',
+        success: false 
+      });
+    }
+    
+    res.json({ 
+      config,
+      success: true 
+    });
+  } catch (error) {
+    logger.error('Error fetching client config:', error);
+    res.status(500).json({ 
+      error: 'Failed to fetch client configuration',
+      success: false 
+    });
+  }
+});
+
+// Generate embed code for a client
+app.get('/api/embed/:clientId', async (req, res) => {
+  try {
+    const { clientId } = req.params;
+    const { position, primaryColor, greeting } = req.query;
+    
+    const embedCode = chatService.generateEmbedCode(clientId, {
+      position,
+      primaryColor,
+      greeting
+    });
+    
+    res.json({ 
+      embedCode,
+      success: true 
+    });
+  } catch (error) {
+    logger.error('Error generating embed code:', error);
+    res.status(500).json({ 
+      error: 'Failed to generate embed code',
+      success: false 
+    });
+  }
+});
+
+// 404 handler for API routes
+app.use('/api/*', (req, res) => {
+  res.status(404).json({ 
+    error: 'API endpoint not found',
+    success: false 
+  });
+});
+
+// Serve frontend for all other routes (SPA support)
+// Admin routes
+app.use('/api', adminRoutes);
+
+app.get('*', (req, res) => {
+  res.sendFile(path.join(__dirname, '../frontend/index.html'));
+});
+
+// Error handling middleware
+app.use((err, req, res, next) => {
+  logger.error('Unhandled error:', err);
+  res.status(500).json({ 
+    error: 'An unexpected error occurred',
+    success: false 
+  });
+});
+
+// Start server
+const server = app.listen(PORT, () => {
+  logger.info(`ChatAI server running on port ${PORT}`);
+  console.log(`🚀 ChatAI server running on port ${PORT}`);
+  console.log(`📍 Environment: ${process.env.NODE_ENV || 'development'}`);
+  console.log(`🤖 OpenAI API Key: ${process.env.OPENAI_API_KEY ? 'Configured ✓' : 'Missing ✗'}`);
+});
+
+// Graceful shutdown
+process.on('SIGTERM', () => {
+  logger.info('SIGTERM signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+process.on('SIGINT', () => {
+  logger.info('SIGINT signal received: closing HTTP server');
+  server.close(() => {
+    logger.info('HTTP server closed');
+    process.exit(0);
+  });
+});
+
+// Handle uncaught exceptions
+process.on('uncaughtException', (error) => {
+  logger.error('Uncaught Exception:', error);
+  process.exit(1);
+});
+
+process.on('unhandledRejection', (reason, promise) => {
+  logger.error('Unhandled Rejection at:', promise, 'reason:', reason);
+  process.exit(1);
+});
+
+module.exports = app;

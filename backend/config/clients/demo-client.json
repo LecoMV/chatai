@@ -1,0 +1,88 @@
+{
+  "clientId": "demo-client",
+  "businessName": "Bright Smile Dental",
+  "website": "https://brightsmilendental.com",
+  "industry": "Healthcare - Dental Services",
+  "knowledgeBase": {
+    "about": "Bright Smile Dental is a modern dental practice serving the Madison, Ohio area since 2010. We provide comprehensive dental care for the whole family in a comfortable, friendly environment.",
+    "services": [
+      "General Dentistry - Cleanings, fillings, and preventive care",
+      "Cosmetic Dentistry - Teeth whitening, veneers, and smile makeovers",
+      "Orthodontics - Traditional braces and Invisalign",
+      "Oral Surgery - Tooth extractions and wisdom teeth removal",
+      "Emergency Dental Care - Same-day appointments for urgent issues",
+      "Pediatric Dentistry - Specialized care for children"
+    ],
+    "faqs": [
+      {
+        "question": "What are your office hours?",
+        "answer": "We're open Monday-Thursday 8:00 AM - 5:00 PM, Friday 8:00 AM - 2:00 PM, and Saturday 9:00 AM - 1:00 PM for emergencies."
+      },
+      {
+        "question": "Do you accept my insurance?",
+        "answer": "We accept most major dental insurance plans including Delta Dental, Cigna, MetLife, and Aetna. Call us at (440) 555-0123 to verify your specific plan."
+      },
+      {
+        "question": "How much does a cleaning cost?",
+        "answer": "A routine cleaning typically costs $150-200 without insurance. With insurance, most patients pay $0-50 depending on their plan."
+      },
+      {
+        "question": "Do you offer payment plans?",
+        "answer": "Yes! We offer CareCredit financing with 0% interest for 6-12 months on treatments over $200. We also have in-house payment plans."
+      },
+      {
+        "question": "How do I schedule an appointment?",
+        "answer": "You can call us at (440) 555-0123, or use our online booking system on our website. New patients can also text 'SMILE' to 44055."
+      },
+      {
+        "question": "What should I do for a dental emergency?",
+        "answer": "For dental emergencies during business hours, call us immediately at (440) 555-0123. After hours, call our emergency line at (440) 555-0199."
+      },
+      {
+        "question": "Do you treat children?",
+        "answer": "Yes! We love kids and see children starting at age 2. Our pediatric dentist, Dr. Sarah Johnson, specializes in making dental visits fun and comfortable for children."
+      },
+      {
+        "question": "How often should I visit the dentist?",
+        "answer": "Most patients should visit every 6 months for cleanings and checkups. Some patients with gum disease or other conditions may need to come every 3-4 months."
+      },
+      {
+        "question": "Is teeth whitening safe?",
+        "answer": "Yes, professional teeth whitening is safe when supervised by a dentist. We offer both in-office Zoom whitening (1 hour) and take-home custom trays."
+      },
+      {
+        "question": "Where are you located?",
+        "answer": "We're located at 123 Main Street, Madison, Ohio 44057. We're in the Madison Plaza, next to the Walgreens."
+      }
+    ],
+    "policies": {
+      "cancellation": "Please provide 24 hours notice for cancellations to avoid a $50 fee",
+      "newPatients": "New patients receive a free consultation and 20% off their first treatment",
+      "insurance": "We file insurance claims for you and accept assignment of benefits",
+      "guarantee": "We guarantee our work for 2 years on all fillings and crowns"
+    }
+  },
+  "chatbotSettings": {
+    "tone": "friendly, professional, and empathetic",
+    "maxResponseLength": 500,
+    "escalationEmail": "info@brightsmilendental.com",
+    "escalationPhone": "(440) 555-0123",
+    "limitations": [
+      "Cannot diagnose dental conditions",
+      "Cannot provide specific medical advice",
+      "Cannot quote exact prices without examination",
+      "Cannot access patient records or appointment systems",
+      "Cannot prescribe medications",
+      "Cannot provide emergency medical care instructions"
+    ]
+  },
+  "customization": {
+    "primaryColor": "#00BCD4",
+    "secondaryColor": "#FFFFFF",
+    "greeting": "👋 Welcome to Bright Smile Dental! How can I help you today?",
+    "placeholder": "Ask about our services, insurance, appointments...",
+    "position": "bottom-right",
+    "avatarUrl": "/images/tooth-logo.png",
+    "businessHoursMessage": "We're currently closed. Our hours are Mon-Thu 8-5, Fri 8-2. For emergencies, call (440) 555-0199."
+  }
+}
